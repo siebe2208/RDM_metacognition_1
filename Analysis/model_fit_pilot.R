@@ -4,6 +4,7 @@ library(rstudioapi)
 library(cmdstanr)
 library(posterior)
 library(ordbetareg)
+library(ggtext)
 library(boot)
 library(here)
 library(patchwork)
@@ -232,5 +233,90 @@ conf_res = ggplot() +
 
 conf_p + conf_res
 
+## Plot marginal distributions
+m_alpha = ggplot(data = draws, aes(x=alpha))+
+  geom_histogram(bins =100, fill = "skyblue", color = "black")+
+  scale_x_continuous(limits = c(min(draws$alpha)-0.1, max(draws$alpha)+0.1))+
+  scale_y_continuous(expand = expansion(mult = c(0,0.05)))+
+  labs(x = NULL, y = "posterior draws", title = "Alpha (threshold)")+
+  theme_minimal()+
+  theme(plot.title = element_textbox(size = 20,
+                                     color = "black", fill = NA, box.color = "black",
+                                     halign = 0.5, linetype = 1, linewidth = 1.5, r = unit(5, "pt"), width = unit(1, "npc"),
+                                     padding = margin(5, 0, 5, 0), margin = margin(0, 0, 5, 0)),
+        axis.title = element_text(size = 16),                 
+        axis.text = element_text(size = 14),
+        panel.border = element_rect(color = "black", fill = NA, size = 3))
+
+m_beta = ggplot(data = draws, aes(x=exp(beta)))+
+  geom_histogram(bins =100, fill = "skyblue", color = "black")+
+  scale_x_continuous(limits = c(min(exp(draws$beta))-1, max(exp(draws$beta))+1))+
+  scale_y_continuous(expand = expansion(mult = c(0,0.05)))+
+  labs(x = NULL, y = "posterior draws", title = "Beta (Slope)")+
+  theme_minimal()+
+  theme(plot.title = element_textbox(size = 20,
+                                     color = "black", fill = NA, box.color = "black",
+                                     halign = 0.5, linetype = 1, linewidth = 1.5, r = unit(5, "pt"), width = unit(1, "npc"),
+                                     padding = margin(5, 0, 5, 0), margin = margin(0, 0, 5, 0)),
+        axis.title = element_text(size = 16),                 
+        axis.text = element_text(size = 14),
+        panel.border = element_rect(color = "black", fill = NA, size = 3))
+
+m_lapse = ggplot(data = draws, aes(x=lapse))+
+  geom_histogram(bins =100, fill = "skyblue", color = "black")+
+  scale_x_continuous(limits = c(min(draws$lapse), max(draws$lapse)+0.05))+
+  scale_y_continuous(expand = expansion(mult = c(0,0.05)))+
+  labs(x = NULL, y = "posterior draws", title = "Lapse (Asymptote)")+
+  theme_minimal()+
+  theme(plot.title = element_textbox(size = 20,
+                                     color = "black", fill = NA, box.color = "black",
+                                     halign = 0.5, linetype = 1, linewidth = 1.5, r = unit(5, "pt"), width = unit(1, "npc"),
+                                     padding = margin(5, 0, 5, 0), margin = margin(0, 0, 5, 0)),
+        axis.title = element_text(size = 16),                 
+        axis.text = element_text(size = 14),
+        panel.border = element_rect(color = "black", fill = NA, size = 3))
+
+
+combined_T1 <- (m_alpha | m_beta) / m_lapse + plot_layout(heights = c(2,1))+
+  plot_annotation(title = "Type 1 Marginal Posteriors", 
+                  theme = theme(
+                    plot.title = element_text(size = 24, face = "bold", hjust = 0.5)))
+combined_T1
+
+
+m_rtint = ggplot(data = draws, aes(x=exp(rt_int)))+
+            geom_histogram(bins =100, fill = "goldenrod2", color = "black")+
+            scale_x_continuous(limits = c(exp(min(draws$rt_int))-0.2, exp(max(draws$rt_int)))+0.1)+
+            scale_y_continuous(expand = expansion(mult = c(0,0.05)))+
+            labs(x = NULL, y = "posterior draws", title = "RT intercept no NDT")+
+            theme_minimal()+
+            theme(plot.title = element_textbox(size = 20,
+                                               color = "black", fill = NA, box.color = "black",
+                                               halign = 0.5, linetype = 1, linewidth = 1.5, r = unit(5, "pt"), width = unit(1, "npc"),
+                                               padding = margin(5, 0, 5, 0), margin = margin(0, 0, 5, 0)),
+                  axis.title = element_text(size = 16),                 
+                  axis.text = element_text(size = 14),
+                  panel.border = element_rect(color = "black", fill = NA, size = 3))
+
+m_rtslope = ggplot(data = draws, aes(x=rt_slope))+
+              geom_histogram(bins =100, fill = "goldenrod2", color = "black")+
+              scale_x_continuous(limits = c(min(draws$rt_slope)-0.2, max(draws$rt_slope))+0.1)+
+              scale_y_continuous(expand = expansion(mult = c(0,0.05)))+
+              labs(x = NULL, y = "posterior draws", title = "RT slope (log space)")+
+              theme_minimal()+
+              theme(plot.title = element_textbox(size = 20,
+                                                 color = "black", fill = NA, box.color = "black",
+                                                 halign = 0.5, linetype = 1, linewidth = 1.5, r = unit(5, "pt"), width = unit(1, "npc"),
+                                                 padding = margin(5, 0, 5, 0), margin = margin(0, 0, 5, 0)),
+                    axis.title = element_text(size = 16),                 
+                    axis.text = element_text(size = 14),
+                    panel.border = element_rect(color = "black", fill = NA, size = 3))
+
+
+combined_RT <- m_rtint|m_rtslope + plot_layout(heights = 0.5)+
+  plot_annotation(title = "RT marginal Posteriors", 
+                  theme = theme(
+                    plot.title = element_text(size = 24, face = "bold", hjust = 0.5)))
+combined_RT
 
   
