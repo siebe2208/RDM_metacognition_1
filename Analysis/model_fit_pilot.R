@@ -72,6 +72,15 @@ posterior = draws %>%
   mutate(beta = exp(beta)) %>% mutate(draw = 1:n(),
   x = list(x)) %>% unnest(x)
 
+data_main$bins = data_main %>% pull(coherence) %>% cut(breaks = 20, include.lowest = TRUE) 
+
+binned_T = data_main %>% group_by((bins)) %>%
+  summarise(
+    bin = mean(coherence),
+    resp = mean(up)
+  )
+  
+
 draws_psych = posterior %>% filter(draw%in% draw_id) %>% 
   mutate(y_pred = psycho_ACC(x, alpha, beta, lapse))%>%
   group_by(x) %>%
@@ -156,10 +165,10 @@ data_main = data_main %>% rowwise() %>%
   
 ## Plots binary choice
 type_1_p = ggplot() +
-            geom_point(data = data_main, aes(x = coherence, y = up), color = "red", size = 2, shape = 16, alpha = 0.7) +
             geom_ribbon(data = draws_psych, aes(x=x, ymin = ymin, ymax = ymax), col = "grey", alpha = 0.2)+
+            geom_point(data = binned_T, aes(x = bin, y = resp), color = "red", size = 4, shape = 16, alpha = 0.7) +
             geom_line(aes(x=x, y=y_pred_med), color = "black", size = 1.2, alpha = 1)+
-            labs(x = "Coherence", y = "P('up')", title = "Type 1") +
+            labs(x = "Coherence", y = "P('up')", title = "binned Type 1") +
             theme_minimal()+
             theme(plot.title = element_text(hjust = 0.5, size = 16),
                   axis.title = element_text(size = 16),                 
