@@ -7,7 +7,7 @@ Embodied Computation Group
 @author: Siebe Everaerts 
 """
 
-from scipy.signal import find_peaks
+from scipy import signal
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -178,3 +178,5 @@ def PD_stamp_check(PD_peaks, stamps, SR = None, trans_samples = False, plot = Fa
 #y = trial_timing("PD_check", PD_data, 1000, data_stamps = trial_start, plot = True, skip = list(range(120, 128)) )
 #print(y["timing"])
 #print(y["check"])
+
+
