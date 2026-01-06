@@ -17,12 +17,23 @@ import random
 import numpy as np
 from psychopy import visual as vis
 from psychopy import event, core, data
+from psychopy.hardware import keyboard
 from scipy.stats import truncnorm
 import questplus as qp
 import concurrent.futures
 import math
 import itertools
 import os
+import pylink
+import sys
+import serial
+from pylink.eyelink import EyeLink
+from EyeLinkCoreGraphicsPsychoPy import EyeLinkCoreGraphicsPsychoPy
+import instructions_1 as ins
+
+sys.path.append("Eyelink")
+#ser = serial.Serial('COM7', 115200, timeout=1)
+
 
 ################################################################################################################################ 
 # Set directory
@@ -31,11 +42,13 @@ abspath = os.path.abspath(__file__)
 dname = os.path.dirname(abspath)
 os.chdir(dname)
 
+
+
 ################################################################################################################################ 
 # Experiment variables
 ################################################################################################################################ 
 # general
-keyboard = "qwerty" # azerty
+keyboard_type = "qwerty" # azerty
 pilot = 0
 training = 1
 training_2 = 1
@@ -55,14 +68,14 @@ else:
 per_correct = 0 # percentage correct when starting --> for training if percetage is lower start another block 
 des_per_cor = 0.6 # desired percentage correct
 mean_rt = 5 # mean reaction time before starting (seconds)
-des_mean_rt = 1.5 # desired mean reaction time --> for training if percetage is lower start another block 
+des_mean_rt = 2 # desired mean reaction time --> for training if percetage is lower start another block 
 coherence = .80 # coherence for first training block 
 coherence_hard = .40 # coherence for second training block (staircase sets it for main exp)
 max_dur_conf = 3 # maximum duration for confidence scale 
 
 # main blocks
 if not pilot:
-    n_trials = 44 # Number of trials per testing block Note: this should be an even number
+    n_trials = 46 # Number of trials per testing block Note: this should be an even number
     n_blocks = 8 # Number of testing blocks 
 else:
     n_trials = 10
@@ -78,6 +91,12 @@ if not pilot:
     ins_wait = 1; break_wait = 5
 elif pilot:
     ins_wait = 0; break_wait = 0
+
+# Determine when other scale is presented
+if not pilot:
+    scale_Nblock = 4
+elif pilot:
+    scale_Nblock = 1
 
 
 ################################################################################################################################ 
@@ -96,6 +115,13 @@ else:
 file_name = "Data/RDM_reportz_sub%d" % sub
 thisExp = data.ExperimentHandler(dataFileName=file_name, extraInfo=info)  # saving extra info along with the main experimental data
 
+## file save for eyelink 1000
+# remote filename (on the EyeLink) must be a simple filename (no path)
+edf_remote_name = f"sqq_{sub}.EDF"
+# local path where we'll save the received EDF
+edf_local_path = os.path.join("Data", f"RDM_reportz_eyetrack_{sub}.EDF")
+
+
 ################################################################################################################################ 
 # Psychopy objects
 ################################################################################################################################ 
@@ -109,22 +135,23 @@ else:
 width = win.size[0]
 height = win.size[1]
 
-#Mouse
-mouse = event.Mouse(win=win) 
+#Create a keybard object and stepsize for slider
+kb = keyboard.Keyboard()
+step_size = 0.02 
 
 # Clock
 clock = core.Clock()
 
-# Define keys
-if keyboard == "qwerty":
-    choice_keys = ['q', 'a', 'escape']  # up, down, escape
-elif keyboard == "azerty":
-     choice_keys = ['a', 'q', 'escape']  # up, down, escape
+# Define response keys based on keyboard type
+if keyboard_type == "qwerty":
+    choice_keys = ['w', 's', 'escape']  # up, down, escape
+elif keyboard_type == "azerty":
+     choice_keys = ['z', 's', 'escape']  # up, down, escape
 else:
      raise TypeError('Unknown keyboard name')
 
 # Creating DotMotion stimulus
-DotMotion = vis.DotStim(win, units='pix', nDots= 120, fieldSize = 300, fieldShape='circle', dotSize=6  , dotLife=10, speed=0.7, color='white', 
+DotMotion = vis.DotStim(win, units='pix', nDots= 120, fieldSize = 300, fieldShape='circle', dotSize=6  , dotLife=10, speed=3, color='white', 
                         signalDots='same', noiseDots='walk') #https://www.psychopy.org/api/visual/dotstim.html 
 
 # Creating a slider to rate confidence or clarity 
@@ -157,43 +184,64 @@ fixation = vis.ShapeStim(
 # space for training
 space = vis.TextStim(win, text='Press SPACE to continue', pos=(0, -300), height=30)
 
+# === Launch iohub with EyeLink ===
+tracker = EyeLink("100.1.1.1")
+tracker.openDataFile(edf_remote_name)
+
+# === EyeLink calibration graphics ===
+genv = EyeLinkCoreGraphicsPsychoPy(tracker, win)
+genv.setCalibrationColors((-1, -1, -1), win.color)
+genv.setTargetType('picture')
+genv.setPictureTarget(os.path.join(dname, 'Eyelink_cal', 'fixTarget.bmp'))
+pylink.openGraphicsEx(genv)
+
+# === EyeLink screen and calibration settings ===
+tracker.sendCommand(f"screen_pixel_coords = 0 0 {width - 1} {height - 1}")
+tracker.sendMessage(f"DISPLAY_COORDS = 0 0 {width - 1} {height - 1}")
+tracker.sendCommand('enable_automatic_calibration=YES')
+tracker.sendCommand('automatic_calibration_pacing=500')
+           
+##################################################################
+######## Eyetracker  Calibration #################################
+##################################################################
+               
+# === Calibrate the tracker (optional but recommended) ===
+tracker.doTrackerSetup()
+
+
+
+
+
+
 # reading instructions slides
-intro = vis.ImageStim(win, image=dname+"\Intro.jpg", units = 'pix', size = [width,height])
-main_1 = vis.ImageStim(win, image=dname+"\Main1.jpg", units = 'pix', size = [width, height]) 
-main_2 = vis.ImageStim(win, image=dname+"\Main2.jpg", units = 'pix', size = [width, height]) 
-main_3 = vis.ImageStim(win, image=dname+"\Main3.jpg", units = 'pix', size = [width, height])
-main_4 = vis.ImageStim(win, image=dname+"\Main4.jpg", units = 'pix', size = [width, height])
-main_5 = vis.ImageStim(win, image=dname+"\Main5.jpg", units = 'pix', size = [width, height]) 
-main_6 = vis.ImageStim(win, image=dname+"\Main6.jpg", units = 'pix', size = [width, height])     
+#intro = vis.ImageStim(win, image=dname+"\Intro.jpg", units = 'pix', size = [width,height])
+#main_1 = vis.ImageStim(win, image=dname+"\Main1.jpg", units = 'pix', size = [width, height]) 
+#main_2 = vis.ImageStim(win, image=dname+"\Main2.jpg", units = 'pix', size = [width, height]) 
+#main_3 = vis.ImageStim(win, image=dname+"\Main3.jpg", units = 'pix', size = [width, height])
+#main_4 = vis.ImageStim(win, image=dname+"\Main4.jpg", units = 'pix', size = [width, height])
+#main_5 = vis.ImageStim(win, image=dname+"\Main5.jpg", units = 'pix', size = [width, height]) 
+#main_6 = vis.ImageStim(win, image=dname+"\Main6.jpg", units = 'pix', size = [width, height])     
 
 ################################################################################################################################ 
 # Functions
 ################################################################################################################################ 
 def get_stim(SC):
     return SC.next_stim
-## Function to check if the mouse is hovering over the slider bar area
-def is_mouse_over_slider(mouse, slider):
-    # Get the mouse position and slider position/size
-    mouse_pos = mouse.getPos()
-    slider_x, _ = slider.pos
-    slider_width, _ = slider.size
-    
-    # Check if the mouse is within the horizontal bounds of the slider
-    within_x = slider_x - slider_width / 2 <= mouse_pos[0] <= slider_x + slider_width / 2
-    
-    return within_x 
 
-## Function to handle slider value calculation based on active slider
-def get_slider_value(mouse_pos, min_value, max_value):
-    # Convert normalized mouse position to slider values
-    # Assuming `mouse_pos[0]` is between -0.4 and 0.4 for the slider's widyrth
-    normalized_position = (mouse_pos[0] + slider.size[0] / 2) / slider.size[0]  # Normalize between 0 and 1
-    slider_value = min_value + normalized_position * (max_value - min_value)
-    
-    # Ensure slider_value stays within the bounds of the slider
-    slider_value = max(min(slider_value, max_value), min_value)
-    
-    return slider_value
+## Function to check if the mouse is hovering over the slider bar area
+def move_slider(left, right, up, slider, SR, step_size):
+    slider_pos = slider.markerPos
+    if slider_pos is None:
+        slider_pos = 0.5
+    if left:
+        slider_pos = max(0, slider.markerPos - step_size)  
+    if right:
+        slider_pos = min(1, slider.markerPos + step_size)
+    if up:
+        slider_pos = slider.markerPos
+        SR = slider_pos
+
+    return slider_pos, SR 
 
 # Get training state
 def get_state(per_correct, mean_rt, des_per_cor, des_mean_rt, TrialType):
@@ -258,7 +306,7 @@ def standard(val, mean,sd):
 win.mouseVisible = False
 
 # welcome text
-intro.draw(); win.flip();core.wait(ins_wait); event.waitKeys(keyList=['space'])
+ins.Intro(win);core.wait(ins_wait); event.waitKeys(keyList=['space'])
 
 # training blocks
 if training:
@@ -292,7 +340,7 @@ if training:
                 win.flip()
                 resp = event.getKeys(keyList=choice_keys)
                 if clock.getTime() - T_stimulus_start >= des_mean_rt:
-                    print("No response within 1.5 s, skipping trial")
+                    print("No response within 2 s, skipping trial")
                     FB_text = "No response"
                     FB_col = "white"
                     break
@@ -401,23 +449,20 @@ if training:
 ################################################################################################################################ 
 
 if instructions:
-    main_1.draw(); win.flip();core.wait(ins_wait); event.waitKeys(keyList=['space'])  
-    main_2.draw(); win.flip();core.wait(ins_wait); event.waitKeys(keyList=['space']) 
-    main_3.draw(); win.flip();core.wait(ins_wait); event.waitKeys(keyList=['space']) 
-    main_4.draw(); win.flip();core.wait(ins_wait); event.waitKeys(keyList=['space'])  
-    main_5.draw(); win.flip();core.wait(ins_wait); event.waitKeys(keyList=['space']) 
+    ins.Main1(win);core.wait(ins_wait); event.waitKeys(keyList=['space'])  
+    ins.Main2(win);core.wait(ins_wait); event.waitKeys(keyList=['space']) 
+    ins.Main3(win);core.wait(ins_wait); event.waitKeys(keyList=['space']) 
+    ins.Main4(win);core.wait(ins_wait); event.waitKeys(keyList=['space'])  
+    ins.Main5(win);core.wait(ins_wait); event.waitKeys(keyList=['space']) 
 
 ################################################################################################################################ 
 # Training 2
 ################################################################################################################################
 block += 1
-TrialType = "Training - scales"
+TrialType = "Training - scale"
 if training_2:
     #draw intensities
     coherence = np.linspace(0.1, 1.0, n_training_2);random.shuffle(coherence)
-
-    #draw scales 0 = conf, 1 = catch trials
-    scales = np.concatenate([np.zeros(math.floor(n_training_2*0.5)), np.ones(math.ceil(n_training_2*0.5))]);random.shuffle(scales)
 
     #draw directions
     condition_direction = np.repeat(range(2),[math.floor(n_training_2*0.5), math.ceil(n_training_2*0.5)]); random.shuffle(condition_direction)
@@ -472,6 +517,7 @@ if training_2:
         if resp == ['escape']:
             print('Participant pressed escape')
             thisExp.saveAsWideText(file_name + '.csv', delim=',') 
+
             win.close()
             core.quit()
         
@@ -479,18 +525,13 @@ if training_2:
 
         if resp:
             T_rating_start = clock.getTime()
-            mouse.setPos([0,0])
             slider.reset()
             slider.draw()
-            if scales[trial]:
-                slider_instructions_dir.draw(); slider_label_Nclear.draw(); slider_label_clear.draw()
-      
-            else:
-                slider_instructions.draw(); slider_label_wrong.draw(); slider_label_right.draw()    
-
+            slider_instructions.draw(); slider_label_wrong.draw(); slider_label_right.draw()    
             win.flip()
 
             SR  = None
+            held_keys =[]
             while SR is None: 
                 # check if participant is 
                 elapsed_time = clock.getTime() - T_rating_start
@@ -500,34 +541,29 @@ if training_2:
                     SR = None  # make sure response is recorded as missing
                     RTrating = None
                     break
-                # Check if the mouse is over the slider bar area 
-                if is_mouse_over_slider(mouse, slider):
-                    mouse_pos = mouse.getPos()
-                    slider_pract_value = get_slider_value(mouse_pos, 0, 1)
-                    slider.markerPos = slider_pract_value  # Update slider marker position
-                    slider.draw()
-                    if scales[trial]:
-                        slider_instructions_dir.draw(); slider_label_Nclear.draw(); slider_label_clear.draw()
-            
-                    else:
-                        slider_instructions.draw(); slider_label_wrong.draw(); slider_label_right.draw()    
 
-                    win.flip()
-                # Check if the mouse has been clicked to submit the answer
-                if mouse.getPressed()[0] & is_mouse_over_slider(mouse, slider):
-                    SR = (slider.markerPos - 0.5) * 2 # Get the final rating value
-                    win.mouseVisible = False
-                    print("Reported confidence = ", SR)
-                    T_rating_stop = clock.getTime()
-                    RTrating = T_rating_stop - T_rating_start
-                    
-                # Escape 
-                keys = event.getKeys()  
-                if 'escape' in keys:  
+                # Get Key presses
+                left, right, up, escape = kb.getState(['left', 'right', 'up', 'escape'])
+                
+                # Check if escape
+                if escape:  
                     print('Participant pressed escape')
                     thisExp.saveAsWideText(file_name + '.csv', delim=',') 
                     win.close()  
                     core.quit()
+
+                # Get new slider value and check if new confidence
+                slider_pract_value, SR = move_slider(left, right, up, slider, SR, step_size)
+                slider.markerPos = slider_pract_value  # Update slider marker position
+                slider.draw()
+                slider_instructions.draw(); slider_label_wrong.draw(); slider_label_right.draw()    
+
+                win.flip()
+
+                # Check if the mouse has been clicked to submit the answer
+            print("Reported confidence = ", SR)
+            T_rating_stop = clock.getTime()
+            RTrating = T_rating_stop - T_rating_start
             
         else:
             RTrating = None
@@ -536,11 +572,9 @@ if training_2:
         fixation.draw(); win.flip(); core.wait(1)
 
         key_to_label = {choice_keys[0]: "up", choice_keys[1]: "down"}
-        scale_to_label = {0: "conf", 1: "control"}
 
         if resp:
             resp = key_to_label[resp[0]]
-            scale = scale_to_label[int(scales[trial])]
         else:
             scale = None
 
@@ -553,13 +587,12 @@ if training_2:
         thisExp.addData("cor", ACC)
         thisExp.addData("dots direction", direction)
         thisExp.addData("cor_resp", correct)
-        thisExp.addData("scale", scale)
         thisExp.addData("SR_conf", SR)
         thisExp.addData("RTrating", RTrating)
         thisExp.addData("coherence", coherence[trial])
         thisExp.nextEntry()
 
-main_6.draw(); win.flip();core.wait(ins_wait); event.waitKeys(keyList=['space'])
+ins.Main6(win);core.wait(ins_wait); event.waitKeys(keyList=['space'])
 
 ################################################################################################################################ 
 # Variables for main experiment
@@ -574,19 +607,19 @@ pairs = list(itertools.product(means, sds)); repeat = n_blocks // len(pairs); co
 SC = qp.QuestPlus(stim_domain= {"intensity": np.linspace(0.01,1,50)}, 
                  func="weibull",
                  stim_scale="log10",
-                 param_domain= {"threshold": np.linspace(0.01,1,50), "slope": np.linspace(1,10,50), "lower_asymptote": 0.5, "lapse_rate": np.array([0.01,0.03,0.05,0.07,0.1])},
-                 prior = {"threshold": np.ones(50)/50, "slope": np.ones(50)/50, "lapse_rate": np.repeat(0.2, 5)},
+                 param_domain= {"threshold": np.linspace(0.01,1,50), "slope": np.linspace(1,10,50), "lower_asymptote": 0.5, "lapse_rate": 0.05},
+                 prior = {"threshold": np.ones(50)/50, "slope": np.ones(50)/50},
                  outcome_domain={"response": [1, 0]},
                  stim_selection_method="min_n_entropy",
-                 stim_selection_options = {"n": 1, "max_consecutive_reps": 4},
+                 stim_selection_options = {"n": 1, "max_consecutive_reps": 20},
                  param_estimation_method= "mean")
 
 # Equal # trials left and right for first block 
 condition_direction = np.repeat(range(2),[math.floor(n_trials*0.5), math.ceil(n_trials*0.5)]); random.shuffle(condition_direction)
-#scales for first block
-scales = np.concatenate([np.zeros(math.floor(n_trials*0.8)), np.ones(math.ceil(n_trials*0.2))]);random.shuffle(scales)
+
 # determine waiting times between trials for first block
 inter_trial = truncnorm.rvs(a, b, loc=inter_t_mean, scale=inter_t_sd, size= n_trials) #Can change mean according to pilots
+
 #waiting times confidence interval for first block
 if not Part:
     manipulation = np.random.uniform(low = des_mean_rt, high = 5, size = n_trials) #Based on Bradley et al. (2012) "Orienting and Emotional Perception: Facilitation, Attenuation, and Interference"
@@ -606,6 +639,9 @@ blockN = 0
 # Main experiment
 ################################################################################################################################ 
 for eachTrial in range(n_trials*n_blocks):
+
+    tracker.setOfflineMode()
+
     # Stimulus direction
     mapping = {0: ('up', 90), 1: ('down', 270)}
     correct, direction = mapping[condition_direction[trialN]]
@@ -621,6 +657,17 @@ for eachTrial in range(n_trials*n_blocks):
         except concurrent.futures.TimeoutError:
             print(f"Problem on trial: {trialN}, block: {blockN + 2}. Aborting experiment...")
             thisExp.saveAsWideText(file_name + '.csv', delim=',')
+            ## save eyelink EDF from tracker to local Data folder
+            tracker.setOfflineMode()
+            tracker.closeDataFile()
+            try:
+                print("Receiving EDF from EyeLink...")
+                tracker.receiveDataFile(edf_remote_name, edf_local_path)
+                print(f"EDF saved to {edf_local_path}")
+            except RuntimeError as e:
+                print("Error transferring EDF:", e)
+
+            tracker.close()
             win.close()
             core.quit()
     
@@ -630,7 +677,18 @@ for eachTrial in range(n_trials*n_blocks):
     DotMotion.coherence = coherence["intensity"]
     DotMotion.dotLife = dotLife
     DotMotion.dir = direction
+
+    ######## start the eyetracker:
+    tracker.startRecording(1, 1, 1, 1)
+    tracker.sendMessage(f"start_trialID_{trialN}_Block_{blockN + 2}")
+    ### biopack
+    #ser.write(str.encode('01'))
+    #core.wait(0.1)
+    #ser.write(str.encode('00')) # turn off all 8
+
+    tracker.sendMessage("start_stimulus")  # Optional: timestamp visual onset
     while not resp:
+        #win.color = 'white' 
         fixation.draw()
         DotMotion.draw()
         win.flip()
@@ -641,7 +699,7 @@ for eachTrial in range(n_trials*n_blocks):
             miss_text.draw(); win.flip()
             core.wait(1)
             break
-            
+    tracker.sendMessage("end_stimulus")  # Optional: timestamp visual offset  
     # get reaction time
     if resp:
         T_stimulus_stop = clock.getTime()
@@ -651,7 +709,7 @@ for eachTrial in range(n_trials*n_blocks):
     else:
         rt[trialN] = np.nan
         
-        # get accuracy
+    # get accuracy
     correct_key = choice_keys[0] if correct == "up" else choice_keys[1]
     if resp:
         is_correct = (resp[0] == correct_key)
@@ -661,31 +719,54 @@ for eachTrial in range(n_trials*n_blocks):
     else:
             ACC = 0
             
-            # allow escape to exit experiment
+    # allow escape to exit experiment
     if resp == ['escape']:
         print('Participant pressed escape')
         thisExp.saveAsWideText(file_name + '.csv', delim=',') 
+
+        ## save eyelink EDF from tracker to local Data folder
+        tracker.setOfflineMode()
+        tracker.closeDataFile()
+        try:
+            print("Receiving EDF from EyeLink...")
+            tracker.receiveDataFile(edf_remote_name, edf_local_path)
+            print(f"EDF saved to {edf_local_path}")
+        except RuntimeError as e:
+            print("Error transferring EDF:", e)
+
+        tracker.close()
+
         win.close()
         core.quit()
     
     #fixation cross
+    #win.color = 'black'
     fixation.draw() ; win.flip()
 
     #Waiting time for cofidence ratings
     if resp:
         interval = manipulation[trialN]
-        core.wait(interval - rt[trialN])
+        core.wait(interval - rt[trialN]- 0.05)
+
+        #ser.write(str.encode('01'))
+        #core.wait(0.05)
+        #ser.write(str.encode('00')) # turn off all 8
+
+
         T_rating_start = clock.getTime()
-        mouse.setPos([0,0])
         slider.reset()
+        slider.setMarkerPos([np.random.uniform(low=0.25, high=0.75), 0])
+        #win.color = 'white'
         slider.draw()
-        if scales[trialN]:
+        if blockN == scale_Nblock:
             slider_instructions_dir.draw(); slider_label_Nclear.draw(); slider_label_clear.draw()
         else:
             slider_instructions.draw(); slider_label_wrong.draw(); slider_label_right.draw()
         win.flip()
 
+
         SR = None
+        tracker.sendMessage("start_confidence")
         while SR is None: 
             # check if participant is 
             elapsed_time = clock.getTime() - T_rating_start
@@ -694,39 +775,57 @@ for eachTrial in range(n_trials*n_blocks):
                 SR = None  # make sure response is recorded as missing
                 RTrating = None
                 break
-            # Check if the mouse is over the slider bar area 
-            if is_mouse_over_slider(mouse, slider):
-                mouse_pos = mouse.getPos()
-                slider_pract_value = get_slider_value(mouse_pos, 0, 1)
-                slider.markerPos = slider_pract_value  # Update slider marker position
-        
-                # Redraw the slider and instructions
-                slider.draw()
-                if scales[trialN]:
-                    slider_instructions_dir.draw(); slider_label_Nclear.draw(); slider_label_clear.draw()
-                else:
-                    slider_instructions.draw(); slider_label_wrong.draw(); slider_label_right.draw()
-                win.flip()
-            
-            # Check if the mouse has been clicked to submit the answer
-            if mouse.getPressed()[0] & is_mouse_over_slider(mouse, slider):
-                SR = (slider.markerPos - 0.5) * 2 # Get the final rating value
-                win.mouseVisible = False
-                T_rating_stop = clock.getTime()
-                RTrating = T_rating_stop - T_rating_start
-                
-            # Escape 
-            keys = event.getKeys()  
-            if 'escape' in keys:  
+# Get Key presses 
+            left, right, up, escape = kb.getState(['left', 'right', 'up', 'escape'])
+
+            # Check if escape
+            if escape:  
                 print('Participant pressed escape')
                 thisExp.saveAsWideText(file_name + '.csv', delim=',') 
+                                ## save eyelink EDF from tracker to local Data folder
+                tracker.setOfflineMode()
+                tracker.closeDataFile()
+                try:
+                    print("Receiving EDF from EyeLink...")
+                    tracker.receiveDataFile(edf_remote_name, edf_local_path)
+                    print(f"EDF saved to {edf_local_path}")
+                except RuntimeError as e:
+                    print("Error transferring EDF:", e)
+                tracker.close()
                 win.close()  
                 core.quit()
+
+            # Get new slider value and check if new confidence
+            slider_pract_value, SR = move_slider(left, right, up, slider, SR, step_size)
+            slider.markerPos = slider_pract_value  # Update slider marker position
+        
+            # Redraw the slider and instructions
+            #win.color = 'white'
+            slider.draw()
+        
+            if blockN == scale_Nblock:
+                slider_instructions_dir.draw(); slider_label_Nclear.draw(); slider_label_clear.draw()
+                scale = 'control'
+            else:
+                slider_instructions.draw(); slider_label_wrong.draw(); slider_label_right.draw() 
+                scale = 'conf'
+            win.flip()
+            
+            T_rating_stop = clock.getTime()
+            RTrating = T_rating_stop - T_rating_start
         
     else:
         RTrating = None
         SR = None
         interval = None
+    
+    core.wait(0.1)
+    tracker.sendMessage(f"end_trialID_{trialN}_Block_{blockN + 2}")
+    #ser.write(str.encode('01'))
+    #core.wait(0.015)
+    #ser.write(str.encode('00'))
+    tracker.stopRecording()
+
 
     #Add response to staircase and proceed to next value
     print("trial = OK")
@@ -735,14 +834,12 @@ for eachTrial in range(n_trials*n_blocks):
         
 
     # Blank screen drawn from a truncated normal distribution
+    #win.color = 'black'
     fixation.draw(); win.flip(); core.wait(inter_trial[trialN]) # Change to waiting time drawn from a distribution 
 
     key_to_label = {choice_keys[0]: "up", choice_keys[1]: "down"}
-    scale_to_label = {0: "conf", 1: "control"}
-
     if resp:
         resp = key_to_label[resp[0]]
-        scale = scale_to_label[int(scales[trialN])]
     else:
         scale = None
         
@@ -761,6 +858,7 @@ for eachTrial in range(n_trials*n_blocks):
         thisExp.addData("Mean", conditions[blockN][0])
         thisExp.addData("Standard deviation", conditions[blockN][1])
     thisExp.addData("scale", scale)
+    thisExp.addData("start_conf", start_conf)
     thisExp.addData("SR_conf", SR)
     thisExp.addData("RTrating", RTrating)
     thisExp.addData("coherence", coherence["intensity"])
@@ -768,7 +866,7 @@ for eachTrial in range(n_trials*n_blocks):
 
     #Update trialN
     trialN += 1
-    
+
     if blockN < n_blocks - 1:
     #Check if next block     
         if trialN == n_trials: 
@@ -777,8 +875,7 @@ for eachTrial in range(n_trials*n_blocks):
 
             #Update variables for next block
             condition_direction = np.repeat(range(2),[math.floor(n_trials*0.5), math.ceil(n_trials*0.5)]); random.shuffle(condition_direction)
-            #update scales
-            scales = np.concatenate([np.zeros(math.floor(n_trials*0.8)), np.ones(math.ceil(n_trials*0.2))]);random.shuffle(scales)
+
             # determine waiting times between trials and waiting times confidence interval
             inter_trial = truncnorm.rvs(a, b, loc=inter_t_mean, scale=inter_t_sd, size= n_trials) #Can change mean according to pilots
 
@@ -805,6 +902,11 @@ for eachTrial in range(n_trials*n_blocks):
             points_text, speed_text, break_text, space, feedback_text = break_text_function(num_correct, tot_trials, mean_rt, per_correct, des_per_cor, des_mean_rt, blockN, n_blocks)
             points_text.draw(); speed_text.draw(); feedback_text.draw(); break_text.draw(); win.flip()
             core.wait(break_wait); points_text.draw(); speed_text.draw(); feedback_text.draw(); break_text.draw(); space.draw(); win.flip(); event.waitKeys(keyList=['space'])
+
+            if blockN == scale_Nblock:
+                ins.ExtraScale(win);core.wait(ins_wait); event.waitKeys(keyList=['lctrl']) # Press Control to continue the experiment (add in protocol)
+            elif blockN == scale_Nblock + 1:
+                ins.Main7(win);core.wait(ins_wait); event.waitKeys(keyList=['lctrl']) # Press Control to continue the experiment (add in protocol)
 ################################################################################################################################ 
 # End of experiment
 ################################################################################################################################ 
@@ -816,6 +918,24 @@ core.wait(break_wait); break_text.draw(); space.draw(); win.flip(); event.waitKe
 # Save data in a csv file -----------------------------------------------------
 thisExp.saveAsWideText(file_name + '.csv', delim=',') 
   
+edf_filename = f"Data/RDM_reportz_eyetrack_{sub}.EDF"
+## save eyelink EDF from tracker to local Data folder
+tracker.setOfflineMode()
+tracker.closeDataFile()
+try:
+    print("Receiving EDF from EyeLink...")
+    tracker.receiveDataFile(edf_remote_name, edf_local_path)
+    print(f"EDF saved to {edf_local_path}")
+except RuntimeError as e:
+    print("Error transferring EDF:", e)
+
+tracker.close()
+
 # End of the experiment -------------------------------------------------------
 win.close()
 core.quit() 
+
+
+file_name = "Data/RDM_reportz_sub%d" % sub
+thisExp = data.ExperimentHandler(dataFileName=file_name, extraInfo=info)  # saving extra info along with the main experimental data
+

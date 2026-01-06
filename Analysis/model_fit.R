@@ -8,7 +8,7 @@ library(here)
 ##################################################################
 
 # Extract data
-data = read.csv(here("Analysis", "RDM_reportz_sub0_2.csv"))
+data = read.csv(here("Analysis", "Data", "Data Kelly.csv"))
 
 # Filter for main and different scale
 data_main = data[data$Trialtype == "Main",]
@@ -51,5 +51,5 @@ model = cmdstan_model(here("Analysis", "single_sub_nocopula.stan"))
 
 fit = model$sample(data = data_list, parallel_chains = 4)
 
-fit$save_object(here("Analysis", "fit_pilot_siebe.rds"))
-fit <- readRDS(here("Analysis", "fit_pilot_siebe.rds"))
+#fit$save_object(here("Analysis", "fit_pilot_siebe.rds"))
+#fit <- readRDS(here("Analysis", "fit_pilot_siebe.rds"))
